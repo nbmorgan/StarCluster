@@ -437,7 +437,7 @@ class EasyEC2(EasyAWS):
                           availability_zone_group=None, placement=None,
                           user_data=None, placement_group=None,
                           block_device_map=None, subnet_id=None,
-                          instance_profile_name=None):
+                          iam_profile=None):
         """
         Convenience method for running spot or flat-rate instances
         """
@@ -477,7 +477,7 @@ class EasyEC2(EasyAWS):
                              placement=placement,
                              placement_group=placement_group,
                              user_data=user_data,
-                             instance_profile_name=instance_profile_name,
+                             iam_profile=iam_profile,
                              block_device_map=block_device_map)
 
         if price:
@@ -500,7 +500,7 @@ class EasyEC2(EasyAWS):
                                security_group_ids=None, subnet_id=None,
                                placement=None, placement_group=None,
                                block_device_map=None, 
-                               instance_profile_name=None):
+                               iam_profile=None):
 
         kwargs = locals()
         kwargs.pop('self')
@@ -565,7 +565,7 @@ class EasyEC2(EasyAWS):
                       max_count=1, key_name=None, security_groups=None,
                       placement=None, user_data=None, placement_group=None,
                       block_device_map=None, subnet_id=None,
-                      instance_profile_name = None):
+                      iam_profile = None):
 
         kwargs = dict(
             instance_type=instance_type,
@@ -576,7 +576,7 @@ class EasyEC2(EasyAWS):
             placement=placement,
             user_data=user_data,
             block_device_map=block_device_map,
-            instance_profile_name=instance_profile_name,
+            instance_profile_name=iam_profile,
             placement_group=placement_group
         )
         if subnet_id:

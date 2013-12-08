@@ -186,7 +186,7 @@ class Node(object):
         payload = volstxt.split('\n', 2)[2]
         return utils.decode_uncompress_load(payload)
 
-    def get_instance_profile_name(self):
+    def get_iam_profile(self):
         if self.instance.instance_profile:
             arn = self.instance.instance_profile['arn']
             match = re.match(r'arn:aws:iam::\d{12}:instance-profile/(\S+)', arn)

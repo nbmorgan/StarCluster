@@ -255,5 +255,5 @@ CLUSTER_SETTINGS = {
     'force_spot_master': (bool, False, False, None, None),
     'disable_cloudinit': (bool, False, False, None, None),
     'dns_prefix': (bool, False, False, None, None),
-    'instance_profile_name': (str, False, None, None, None),
+    'iam_profile': (str, False, None, None, None),
 }
