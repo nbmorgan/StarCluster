@@ -510,7 +510,9 @@ class EasyEC2(EasyAWS):
                                iam_profile=None):
 
         kwargs = locals()
+        kwargs['instance_profile_name'] = iam_profile
         kwargs.pop('self')
+        kwargs.pop('iam_profile')
         return self.conn.request_spot_instances(**kwargs)
 
     def _wait_for_propagation(self, obj_ids, fetch_func, id_filter, obj_name,
