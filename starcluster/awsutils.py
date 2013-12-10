@@ -506,7 +506,7 @@ class EasyEC2(EasyAWS):
                                availability_zone_group=None,
                                security_group_ids=None, subnet_id=None,
                                placement=None, placement_group=None,
-                               block_device_map=None, 
+                               block_device_map=None,user_data=None,
                                iam_profile=None):
 
         kwargs = locals()
