@@ -202,6 +202,8 @@ AWS_SETTINGS = {
     'aws_proxy_user': (str, False, None, None, None),
     'aws_proxy_pass': (str, False, None, None, None),
     'aws_validate_certs': (bool, False, True, None, None),
+    'aws_config_table' : (str, False, None, None, None),
+    'aws_config_table_region': (str, False, 'us-east-1', None, None)
 }
 
 KEY_SETTINGS = {
