@@ -22,6 +22,7 @@ from starcluster import exception
 from starcluster import completion
 from starcluster.templates import user_msgs
 from starcluster.logger import log
+from starcluster.commands import clone
 
 from completers import ClusterCompleter
 
@@ -223,6 +224,15 @@ class CmdStart(ClusterCompleter):
                 raise
             else:
                 raise exception.CancelledStartRequest(tag)
+        try:
+            #storing startup information in dynamodb
+            log.info("Storing configuration for cloning.")
+            clone.store_config( cluster_template = scluster.__getstate__(),
+                cluster_tag=tag ,cluster_region=self.ec2.region.name, 
+                template_name=self.opts.cluster_template, zone=scluster.zone)
+        except:
+            log.exception(("Error attempting to store cluster settings.  This"
+                " cluster will not be cloneable."))
         if validate_only:
             return
         if not create_only and not self.opts.login_master:

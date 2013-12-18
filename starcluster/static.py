@@ -107,6 +107,14 @@ VOLUME_STATUS = ['creating', 'available', 'in-use',
                  'deleting', 'deleted', 'error']
 VOLUME_ATTACH_STATUS = ['attaching', 'attached', 'detaching', 'detached']
 
+KEYNAMES = {
+    'us-east-1':'starcluster',
+    'us-west-1':'starcluster-us-west-1',
+    'us-west-2':'starcluster-us-west-2',
+    'eu-west-1':'starcluster-eu-west-1',
+}
+            
+
 INSTANCE_TYPES = {
     't1.micro': ['i386', 'x86_64'],
     'm1.small': ['i386', 'x86_64'],
@@ -203,7 +211,7 @@ AWS_SETTINGS = {
     'aws_proxy_pass': (str, False, None, None, None),
     'aws_validate_certs': (bool, False, True, None, None),
     'aws_config_table' : (str, False, None, None, None),
-    'aws_config_table_region': (str, False, 'us-east-1', None, None)
+    'aws_meta_bucket' : (str, False, None, None, None),
 }
 
 KEY_SETTINGS = {
