@@ -22,6 +22,7 @@ import string
 import pprint
 import warnings
 import datetime
+import locale
 
 import iptools
 
@@ -378,8 +379,34 @@ class ClusterManager(managers.Manager):
                     msg += '%d open' % opn
                 print 'Spot requests: %s' % msg
             if nodes:
+                #init settings for cost display
+                locale.setlocale(locale.LC_ALL, '' )
+                hourly_sum, total_sum, prev_i_type, prev_spot, same_count = (
+                0.0, 0.0, '', None, 1)
+                hourly, total = (0.0,0.0)
+                cost_templ = ' '*11 + '%s/hr-inst   %s total/inst (x %i %s) '
                 print 'Cluster nodes:'
                 for node in nodes:
+                    #cost print more complicated than needs to be
+                    #due to type aggregation
+                    if (node.instance_type == prev_i_type and 
+                        node.is_spot() == prev_spot):
+                            hourly, total = hourly, total
+                            same_count += 1
+                    else:
+                        prev_i_type = node.instance_type
+                        prev_spot = node.is_spot()
+                        if hourly + total > 0:
+                            cost_line =  ( cost_templ % 
+                                    (locale.currency(hourly),
+                                    locale.currency(total), 
+                                    same_count,
+                                    node.instance_type
+                                    ) )
+                            print cost_line
+                        same_count = 1
+                        hourly, total = node.cost
+
                     nodeline = "    %7s %s %s %s" % (node.alias, node.state,
                                                      node.id, node.addr or '')
                     if node.spot_id:
@@ -388,7 +415,17 @@ class ClusterManager(managers.Manager):
                         ssh_status = {True: 'Up', False: 'Down'}
                         nodeline += ' (SSH: %s)' % ssh_status[node.is_up()]
                     print nodeline
+                    hourly_sum += hourly
+                    total_sum += total
+                cost_line = (cost_templ % 
+                        (locale.currency(hourly),
+                        locale.currency(total), same_count,
+                        node.instance_type
+                        ) )
+                print cost_line
                 print 'Total nodes: %d' % len(nodes)
+                print ('Total cost: %s/hr   %s total' % 
+                            (locale.currency(hourly_sum),locale.currency(total_sum)))
             else:
                 print 'Cluster nodes: N/A'
             print
