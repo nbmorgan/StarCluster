@@ -320,7 +320,9 @@ class ClusterManager(managers.Manager):
             ipn = cl.iam_profile if cl.iam_profile else 'N/A'
             print 'IAM instance profile: %s' % ipn
             ebs_vols = []
+            tags = []
             for node in nodes:
+                tags.append(node.tags)
                 devices = node.attached_vols
                 if not devices:
                     continue
@@ -337,6 +339,32 @@ class ClusterManager(managers.Manager):
                           (vid, nid, dev, status))
             else:
                 print 'EBS volumes: N/A'
+            if tags:
+                print 'Tags:'
+                tag_join = {}
+                for node_tags in tags:
+                    for k, v in node_tags.iteritems():
+                        if k not in tag_join:
+                            tag_join[k] = [v]
+                        else:
+                            tag_join[k].append(v)
+                for k, v in tag_join.iteritems():
+                    tag_list = sorted(v)
+                    prev = ''
+                    count = 1
+                    tag_display = [tag_list[0]]
+                    count_display = []
+                    for t in tag_list[1:]:
+                        if t == tag_display[-1]:
+                            count += 1
+                        else:
+                            tag_display.append(t)
+                            count_display.append(count)
+                            count = 1
+                    count_display.append(count)
+                    print '    ',
+                    print "%s: %s" %( k, ','.join(["%s(%i)"%(t,c) for t,c in 
+                            zip(tag_display, count_display)]))
             spot_reqs = cl.spot_requests
             if spot_reqs:
                 active = len([s for s in spot_reqs if s.state == 'active'])
