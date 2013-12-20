@@ -21,6 +21,11 @@ from completers import ClusterCompleter
 class CmdListClusters(ClusterCompleter):
     """
     listclusters [<cluster_tag> ...]
+    starcluster lc [-tcs] [<cluster_tag>]
+
+    For example:
+        starcluster lc -tc mycluster
+        shows mycluster information, including costs and tags
 
     List all active clusters
     """
@@ -31,6 +36,16 @@ class CmdListClusters(ClusterCompleter):
                           action="store_true", default=False,
                           help="output whether SSH is up on each node or not")
 
+        parser.add_option("-c", "--show-cost", dest="show_cost",
+                          action="store_true", default=False,
+                          help="show costs")
+
+        parser.add_option("-t", "--show-tags", dest="show_tags",
+                          action="store_true", default=False,
+                          help="show tags")
+
     def execute(self, args):
         self.cm.list_clusters(cluster_groups=args,
-                              show_ssh_status=self.opts.show_ssh_status)
+                              show_ssh_status=self.opts.show_ssh_status, 
+                              show_cost=self.opts.show_cost,
+                              show_tags=self.opts.show_tags)

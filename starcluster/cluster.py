@@ -273,7 +273,8 @@ class ClusterManager(managers.Manager):
             raise ValueError("Invalid cluster group name: %s" % sg)
         return tag
 
-    def list_clusters(self, cluster_groups=None, show_ssh_status=False):
+    def list_clusters(self, cluster_groups=None, show_ssh_status=False,
+            show_cost=False, show_tags=False):
         """
         Prints a summary for each active cluster on EC2
         """
@@ -340,7 +341,7 @@ class ClusterManager(managers.Manager):
                           (vid, nid, dev, status))
             else:
                 print 'EBS volumes: N/A'
-            if tags:
+            if tags and show_tags:
                 print 'Tags:'
                 tag_join = {}
                 for node_tags in tags:
@@ -389,23 +390,24 @@ class ClusterManager(managers.Manager):
                 for node in nodes:
                     #cost print more complicated than needs to be
                     #due to type aggregation
-                    if (node.instance_type == prev_i_type and 
-                        node.is_spot() == prev_spot):
-                            hourly, total = hourly, total
-                            same_count += 1
-                    else:
-                        prev_i_type = node.instance_type
-                        prev_spot = node.is_spot()
-                        if hourly + total > 0:
-                            cost_line =  ( cost_templ % 
-                                    (locale.currency(hourly),
-                                    locale.currency(total), 
-                                    same_count,
-                                    node.instance_type
-                                    ) )
-                            print cost_line
-                        same_count = 1
-                        hourly, total = node.cost
+                    if show_cost:
+                        if (node.instance_type == prev_i_type and 
+                            node.is_spot() == prev_spot):
+                                hourly, total = hourly, total
+                                same_count += 1
+                        else:
+                            prev_i_type = node.instance_type
+                            prev_spot = node.is_spot()
+                            if hourly + total > 0:
+                                cost_line =  ( cost_templ % 
+                                        (locale.currency(hourly),
+                                        locale.currency(total), 
+                                        same_count,
+                                        node.instance_type
+                                        ) )
+                                print cost_line
+                            same_count = 1
+                            hourly, total = node.cost
 
                     nodeline = "    %7s %s %s %s" % (node.alias, node.state,
                                                      node.id, node.addr or '')
@@ -415,17 +417,21 @@ class ClusterManager(managers.Manager):
                         ssh_status = {True: 'Up', False: 'Down'}
                         nodeline += ' (SSH: %s)' % ssh_status[node.is_up()]
                     print nodeline
-                    hourly_sum += hourly
-                    total_sum += total
-                cost_line = (cost_templ % 
-                        (locale.currency(hourly),
-                        locale.currency(total), same_count,
-                        node.instance_type
-                        ) )
-                print cost_line
+                    if show_cost:
+                        hourly_sum += hourly
+                        total_sum += total
+                if show_cost:        
+                    cost_line = (cost_templ % 
+                            (locale.currency(hourly),
+                            locale.currency(total), same_count,
+                            node.instance_type
+                            ) )
+                    print cost_line
                 print 'Total nodes: %d' % len(nodes)
-                print ('Total cost: %s/hr   %s total' % 
-                            (locale.currency(hourly_sum),locale.currency(total_sum)))
+                if show_cost:
+                    print ('Total cost: %s/hr   %s total' % 
+                                (locale.currency(hourly_sum),
+                                    locale.currency(total_sum)))
             else:
                 print 'Cluster nodes: N/A'
             print
