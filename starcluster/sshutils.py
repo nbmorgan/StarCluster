@@ -582,7 +582,12 @@ class SSHClient(object):
                 log.debug("(ignored) " + msg)
         else:
             if log_output:
-                log.debug("output of '%s':\n%s" % (command, out_str))
+                try:
+                    log.debug("output of '%s':\n%s" % (command, out_str))
+                except:
+                    log.debug("Error writing outstring")
+
+                
             else:
                 log.debug("output of '%s' has been hidden" % command)
         return output
