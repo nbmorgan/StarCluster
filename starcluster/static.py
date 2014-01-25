@@ -129,6 +129,8 @@ INSTANCE_TYPES = {
     'm2.xlarge': ['x86_64'],
     'm2.2xlarge': ['x86_64'],
     'm2.4xlarge': ['x86_64'],
+    'm3.medium': ['x86_64'],
+    'm3.large': ['x86_64'],
     'm3.xlarge': ['x86_64'],
     'm3.2xlarge': ['x86_64'],
     'cc1.4xlarge': ['x86_64'],
@@ -143,11 +145,15 @@ INSTANCE_TYPES = {
     'c3.2xlarge': ['x86_64'],
     'c3.4xlarge': ['x86_64'],
     'c3.8xlarge': ['x86_64'],
+    'i2.xlarge': ['x86_64'],
+    'i2.2xlarge': ['x86_64'],
+    'i2.4xlarge': ['x86_64'],
+    'i2.8xlarge': ['x86_64'],
 }
 
 MICRO_INSTANCE_TYPES = ['t1.micro']
 
-SEC_GEN_TYPES = ['m3.xlarge', 'm3.2xlarge']
+SEC_GEN_TYPES = ['m3.medium', 'm3.large', 'm3.xlarge', 'm3.2xlarge']
 
 CLUSTER_COMPUTE_TYPES = ['cc1.4xlarge', 'cc2.8xlarge']
 
@@ -162,15 +168,29 @@ HI_STORAGE_TYPES = ['hs1.8xlarge']
 M3_COMPUTE_TYPES = ['c3.large', 'c3.xlarge', 'c3.2xlarge', 'c3.4xlarge',
                     'c3.8xlarge']
 
-CLUSTER_TYPES = CLUSTER_COMPUTE_TYPES + CLUSTER_GPU_TYPES + CLUSTER_HIMEM_TYPES
+I2_STORAGE_TYPES = ['i2.xlarge', 'i2.2xlarge', 'i2.4xlarge', 'i2.8xlarge']
 
-HVM_TYPES = (CLUSTER_TYPES + HI_IO_TYPES + HI_STORAGE_TYPES + SEC_GEN_TYPES +
+HVM_ONLY_TYPES = (CLUSTER_COMPUTE_TYPES + CLUSTER_GPU_TYPES +
+                  CLUSTER_HIMEM_TYPES + I2_STORAGE_TYPES)
+
+HVM_TYPES = (HVM_ONLY_TYPES + HI_IO_TYPES + HI_STORAGE_TYPES + SEC_GEN_TYPES +
              M3_COMPUTE_TYPES)
 
-PLACEMENT_GROUP_TYPES = (M3_COMPUTE_TYPES + CLUSTER_TYPES + HI_IO_TYPES +
+EBS_ONLY_TYPES = MICRO_INSTANCE_TYPES
+
+# Always make sure these match instances listed here:
+# http://docs.aws.amazon.com/AWSEC2/latest/UserGuide/placement-groups.html
+# StarCluster additionally adds cc1.4xlarge to the list - EC2 is slowly
+# migrating folks away from this type in favor of cc2.8xlarge but the type
+# still works for some older accounts.
+PLACEMENT_GROUP_TYPES = (M3_COMPUTE_TYPES + HVM_ONLY_TYPES + HI_IO_TYPES +
                          HI_STORAGE_TYPES)
 
-CLUSTER_REGIONS = ['us-east-1', 'us-west-2', 'eu-west-1']
+# Only add a region to this list after testing that you can create and delete a
+# placement group there.
+PLACEMENT_GROUP_REGIONS = ['us-east-1', 'us-west-2', 'eu-west-1',
+                           'ap-northeast-1', 'ap-southeast-1',
+                           'ap-southeast-2']
 
 PROTOCOLS = ['tcp', 'udp', 'icmp']
 

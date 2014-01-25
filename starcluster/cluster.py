@@ -154,7 +154,7 @@ class ClusterManager(managers.Manager):
         """
         cluster = self.get_cluster(cluster_name, load_receipt=False,
                                    require_keys=False)
-        node = cluster.get_node_by_alias(node_id)
+        node = cluster.get_node(node_id)
         key_location = self.cfg.get_key(node.key_name).get('key_location')
         cluster.key_location = key_location
         cluster.keyname = node.key_name
@@ -198,15 +198,24 @@ class ClusterManager(managers.Manager):
                             no_create=no_create,
                             iam_profile=iam_profile)
 
-    def remove_node(self, cluster_name, alias, terminate=True, force=False):
+    def remove_node(self, cluster_name, alias=None, terminate=True,
+                    force=False):
         """
         Remove a single node from a cluster
         """
         cl = self.get_cluster(cluster_name)
-        n = cl.get_node_by_alias(alias)
-        if not n:
-            raise exception.InstanceDoesNotExist(alias, label='node')
-        cl.remove_node(n, terminate=terminate, force=force)
+        n = cl.get_node(alias) if alias else None
+        return cl.remove_node(node=n, terminate=terminate, force=force)
+
+    def remove_nodes(self, cluster_name, num_nodes=None, aliases=None,
+                     terminate=True, force=False):
+        """
+        Remove one or more nodes from cluster
+        """
+        cl = self.get_cluster(cluster_name)
+        nodes = cl.get_nodes(aliases) if aliases else None
+        return cl.remove_nodes(nodes=nodes, num_nodes=num_nodes,
+                               terminate=terminate, force=force)
 
     def restart_cluster(self, cluster_name, reboot_only=False):
         """
@@ -846,23 +855,61 @@ class Cluster(object):
             raise exception.NoClusterNodesFound(terminated_nodes)
         return nodes
 
-    def get_node_by_dns_name(self, dns_name):
+    def get_node(self, identifier, nodes=None):
+        """
+        Returns a node if the identifier specified matches any unique instance
+        attribute (e.g. instance id, alias, spot id, dns name, private ip,
+        public ip, etc.)
+        """
+        nodes = nodes or self.nodes
         for node in self.nodes:
-            if node.dns_name == dns_name:
+            if node.alias == identifier:
                 return node
-        raise exception.InstanceDoesNotExist(dns_name, label='node')
+            if node.id == identifier:
+                return node
+            if node.spot_id == identifier:
+                return node
+            if node.dns_name == identifier:
+                return node
+            if node.ip_address == identifier:
+                return node
+            if node.private_ip_address == identifier:
+                return node
+            if node.public_dns_name == identifier:
+                return node
+            if node.private_dns_name == identifier:
+                return node
+        raise exception.InstanceDoesNotExist(identifier, label='node')
 
-    def get_node_by_id(self, instance_id):
-        for node in self.nodes:
-            if node.id == instance_id:
-                return node
-        raise exception.InstanceDoesNotExist(instance_id, label='node')
+    def get_nodes(self, identifiers, nodes=None):
+        """
+        Same as get_node but takes a list of identifiers and returns a list of
+        nodes.
+        """
+        nodes = nodes or self.nodes
+        node_list = []
+        for i in identifiers:
+            n = self.get_node(i, nodes=nodes)
+            if n in node_list:
+                continue
+            else:
+                node_list.append(n)
+        return node_list
 
-    def get_node_by_alias(self, alias):
-        for node in self.nodes:
-            if node.alias == alias:
-                return node
-        raise exception.InstanceDoesNotExist(alias, label='node')
+    def get_node_by_dns_name(self, dns_name, nodes=None):
+        warnings.warn("Please update your code to use Cluster.get_node()",
+                      DeprecationWarning)
+        return self.get_node(dns_name, nodes=nodes)
+
+    def get_node_by_id(self, instance_id, nodes=None):
+        warnings.warn("Please update your code to use Cluster.get_node()",
+                      DeprecationWarning)
+        return self.get_node(instance_id, nodes=nodes)
+
+    def get_node_by_alias(self, alias, nodes=None):
+        warnings.warn("Please update your code to use Cluster.get_node()",
+                      DeprecationWarning)
+        return self.get_node(alias, nodes=nodes)
 
     def _nodes_in_states(self, states):
         return filter(lambda x: x.state in states, self.nodes)
@@ -945,8 +992,8 @@ class Cluster(object):
         instance_type = instance_type or self.node_instance_type
         if placement_group or instance_type in static.PLACEMENT_GROUP_TYPES:
             region = self.ec2.region.name
-            if not region in static.CLUSTER_REGIONS:
-                cluster_regions = ', '.join(static.CLUSTER_REGIONS)
+            if not region in static.PLACEMENT_GROUP_REGIONS:
+                cluster_regions = ', '.join(static.PLACEMENT_GROUP_REGIONS)
                 log.warn("Placement groups are only supported in the "
                          "following regions:\n%s" % cluster_regions)
                 log.warn("Instances will not be launched in a placement group")
@@ -1002,9 +1049,7 @@ class Cluster(object):
         """
         Add a single node to this cluster
         """
-        aliases = None
-        if alias:
-            aliases = [alias]
+        aliases = [alias] if alias else None
         return self.add_nodes(1, aliases=aliases, image_id=image_id,
                               instance_type=instance_type, zone=zone,
                               placement_group=placement_group,
@@ -1049,22 +1094,39 @@ class Cluster(object):
         self.wait_for_cluster(msg="Waiting for node(s) to come up...")
         log.debug("Adding node(s): %s" % aliases)
         for alias in aliases:
-            node = self.get_node_by_alias(alias)
+            node = self.get_node(alias)
             self.run_plugins(method_name="on_add_node", node=node)
 
-    def remove_node(self, node, terminate=True, force=False):
+    def remove_node(self, node=None, terminate=True, force=False):
         """
         Remove a single node from this cluster
         """
-        return self.remove_nodes([node], terminate=terminate, force=force)
+        nodes = [node] if node else None
+        return self.remove_nodes(nodes=nodes, num_nodes=1, terminate=terminate,
+                                 force=force)
 
-    def remove_nodes(self, nodes, terminate=True, force=False):
+    def remove_nodes(self, nodes=None, num_nodes=None, terminate=True,
+                     force=False):
         """
         Remove a list of nodes from this cluster
         """
+        if nodes is None and num_nodes is None:
+            raise exception.BaseException(
+                "please specify either nodes or num_nodes kwargs")
+        if not nodes:
+            worker_nodes = self.nodes[1:]
+            nodes = worker_nodes[-num_nodes:]
+            nodes.reverse()
+            if len(nodes) != num_nodes:
+                raise exception.BaseException(
+                    "cant remove %d nodes - only %d nodes exist" %
+                    (num_nodes, len(worker_nodes)))
+        else:
+            for node in nodes:
+                if node.is_master():
+                    raise exception.InvalidOperation(
+                        "cannot remove master node")
         for node in nodes:
-            if node.is_master():
-                raise exception.InvalidOperation("cannot remove master node")
             try:
                 self.run_plugins(method_name="on_remove_node", node=node,
                                  reverse=True)
@@ -1584,7 +1646,7 @@ class Cluster(object):
         finally:
             s.stop()
         region = self.ec2.region.name
-        if region in static.CLUSTER_REGIONS:
+        if region in static.PLACEMENT_GROUP_REGIONS:
             pg = self.ec2.get_placement_group_or_none(self._security_group)
             if pg:
                 self.ec2.delete_group(pg)
@@ -1732,11 +1794,7 @@ class Cluster(object):
 
     def ssh_to_node(self, alias, user='root', command=None, forward_x11=False,
                     forward_agent=False, pseudo_tty=False):
-        node = self.get_node_by_alias(alias)
-        node = node or self.get_node_by_dns_name(alias)
-        node = node or self.get_node_by_id(alias)
-        if not node:
-            raise exception.InstanceDoesNotExist(alias, label='node')
+        node = self.get_node(alias)
         return node.shell(user=user, forward_x11=forward_x11,
                           forward_agent=forward_agent,
                           pseudo_tty=pseudo_tty,
@@ -1819,7 +1877,6 @@ class ClusterValidator(validators.Validator):
             self.validate_ebs_aws_settings()
             self.validate_image_settings()
             self.validate_instance_types()
-            self.validate_cluster_compute()
             self.validate_userdata()
             log.info('Cluster template settings are valid')
             return True
@@ -1952,7 +2009,7 @@ class ClusterValidator(validators.Validator):
                 "cannot be used with instance type '%s'.\n\nHVM images "
                 "require one of the following HVM instance types:\n%s" %
                 (image_id, instance_type, cctypes_list))
-        if instance_type in static.CLUSTER_TYPES and not image_is_hvm:
+        if instance_type in static.HVM_ONLY_TYPES and not image_is_hvm:
             raise exception.ClusterValidationError(
                 "The '%s' instance type can only be used with hardware "
                 "virtual machine (HVM) images. Image '%s' is not an HVM "
@@ -1968,8 +2025,7 @@ class ClusterValidator(validators.Validator):
                           'image_platform': image_platform}
             raise exception.ClusterValidationError(error_msg % error_dict)
         image_is_ebs = (image.root_device_type == 'ebs')
-        ebs_only_types = static.MICRO_INSTANCE_TYPES + static.SEC_GEN_TYPES
-        if instance_type in ebs_only_types and not image_is_ebs:
+        if instance_type in static.EBS_ONLY_TYPES and not image_is_ebs:
             error_msg = ("Instance type %s can only be used with an "
                          "EBS-backed AMI and '%s' is not EBS-backed " %
                          (instance_type, image.id))
@@ -2035,18 +2091,6 @@ class ClusterValidator(validators.Validator):
                     "Invalid settings for node_instance_type %s: %s" %
                     (type, e.msg))
         return True
-
-    def validate_cluster_compute(self):
-        cluster = self.cluster
-        lmap = cluster._get_launch_map()
-        for (type, image) in lmap:
-            if type in static.CLUSTER_TYPES:
-                img = cluster.ec2.get_image(image)
-                if img.virtualization_type != 'hvm':
-                    raise exception.ClusterValidationError(
-                        'Cluster Compute/GPU instance type %s '
-                        'can only be used with HVM images.\n'
-                        'Image %s is NOT an HVM image.' % (type, image))
 
     def validate_permission_settings(self):
         permissions = self.cluster.permissions
@@ -2228,18 +2272,6 @@ class ClusterValidator(validators.Validator):
                 "User data scripts combined and compressed must be <= 16KB\n"
                 "NOTE: StarCluster uses anywhere from 0.5-2KB "
                 "to store internal metadata" % ud_size_kb)
-
-    def ssh_to_master(self, user='root', command=None, forward_x11=False):
-        return self.ssh_to_node('master', user=user, command=command,
-                                forward_x11=forward_x11)
-
-    def ssh_to_node(self, alias, user='root', command=None, forward_x11=False):
-        node = self.get_node_by_alias(alias)
-        node = node or self.get_node_by_dns_name(alias)
-        node = node or self.get_node_by_id(alias)
-        if not node:
-            raise exception.InstanceDoesNotExist(alias, label='node')
-        return node.shell(user=user, forward_x11=forward_x11, command=command)
 
 
 if __name__ == "__main__":

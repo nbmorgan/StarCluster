@@ -618,14 +618,12 @@ class EasyEC2(EasyAWS):
 
     def register_image(self, name, description=None, image_location=None,
                        architecture=None, kernel_id=None, ramdisk_id=None,
-                       root_device_name=None, block_device_map=None):
-        return self.conn.register_image(name=name, description=description,
-                                        image_location=image_location,
-                                        architecture=architecture,
-                                        kernel_id=kernel_id,
-                                        ramdisk_id=ramdisk_id,
-                                        root_device_name=root_device_name,
-                                        block_device_map=block_device_map)
+                       root_device_name=None, block_device_map=None,
+                       virtualization_type=None, sriov_net_support=None,
+                       snapshot_id=None):
+        kwargs = locals()
+        kwargs.pop('self')
+        return self.conn.register_image(**kwargs)
 
     def delete_keypair(self, name):
         return self.conn.delete_key_pair(name)
@@ -1177,6 +1175,66 @@ class EasyEC2(EasyAWS):
             os.unlink(f.name + '.bak')
             log.info("Manifest migrated successfully. You can now run:\n" +
                      register_cmd + "\nto register your migrated image.")
+
+    def copy_image(self, source_region, source_image_id, name=None,
+                   description=None, client_token=None, wait_for_copy=False):
+        kwargs = locals()
+        kwargs.pop('self')
+        kwargs.pop('wait_for_copy')
+        log.info("Copying %s from %s to %s" % (source_image_id, source_region,
+                                               self.region.name))
+        resp = self.conn.copy_image(**kwargs)
+        log.info("New AMI in region %s: %s" %
+                 (self.region.name, resp.image_id))
+        if wait_for_copy:
+            img = self.get_image(resp.image_id)
+            self.wait_for_ami(img)
+        return resp
+
+    def wait_for_ami(self, ami):
+        if ami.root_device_type == 'ebs':
+            root = ami.block_device_mapping.get(ami.root_device_name)
+            if root.snapshot_id:
+                self.wait_for_snapshot(self.get_snapshot(root.snapshot_id))
+            else:
+                log.warn("The root device snapshot id is not yet available")
+        s = utils.get_spinner("Waiting for '%s' to become available" % ami.id)
+        try:
+            while ami.state != 'available':
+                ami.update()
+                time.sleep(10)
+        finally:
+            s.stop()
+
+    def copy_image_to_all_regions(self, source_region, source_image_id,
+                                  name=None, description=None,
+                                  client_token=None, add_region_to_desc=False,
+                                  wait_for_copies=False):
+        current_region = self.region
+        self.connect_to_region(source_region)
+        src_img = self.get_image(source_image_id)
+        regions = self.regions.copy()
+        regions.pop(source_region)
+        log.info("Copying %s to regions:\n%s" %
+                 (src_img.id, ', '.join(regions.keys())))
+        name = name or src_img.name
+        resps = {}
+        for r in regions:
+            self.connect_to_region(r)
+            desc = description or ''
+            if add_region_to_desc:
+                desc += ' (%s)' % r.upper()
+            resp = self.copy_image(src_img.region.name, src_img.id, name=name,
+                                   description=desc,
+                                   client_token=client_token)
+            resps[r] = resp
+        if wait_for_copies:
+            for r in resps:
+                self.connect_to_region(r)
+                img = self.get_image(resps[r].image_id)
+                self.wait_for_ami(img)
+        self.connect_to_region(current_region.name)
+        return resps
 
     def create_block_device_map(self, root_snapshot_id=None,
                                 root_device_name='/dev/sda1',
