@@ -119,6 +119,11 @@ class InstanceNotRunning(AWSError):
         self.msg = "%s %s is not running (%s)" % (label, instance_id, state)
 
 
+class SubnetDoesNotExist(AWSError):
+    def __init__(self, subnet_id):
+        self.msg = "subnet does not exist: %s" % subnet_id
+
+
 class SecurityGroupDoesNotExist(AWSError):
     def __init__(self, sg_name):
         self.msg = "security group %s does not exist" % sg_name
@@ -209,6 +214,10 @@ class SpotHistoryError(AWSError):
     def __init__(self, start, end):
         self.msg = "no spot price history for the dates specified: "
         self.msg += "%s - %s" % (start, end)
+
+
+class PropagationException(AWSError):
+    pass
 
 
 class InvalidIsoDate(BaseException):

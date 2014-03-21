@@ -36,6 +36,7 @@ import urlparse
 from datetime import datetime
 
 import iptools
+import iso8601
 import decorator
 
 from starcluster import spinner
@@ -238,7 +239,7 @@ def is_iso_time(iso):
     try:
         iso_to_datetime_tuple(iso)
         return True
-    except ValueError:
+    except iso8601.ParseError:
         return False
 
 
@@ -246,20 +247,26 @@ def iso_to_datetime_tuple(iso):
     """
     Converts an iso time string to a datetime tuple
     """
-    #remove timezone
-    iso = iso.split('.')[0]
-    try:
-        return datetime.strptime(iso, "%Y-%m-%dT%H:%M:%S")
-    except AttributeError:
-        # python2.4 datetime module doesnt have strptime
-        return datetime(*time.strptime(iso, "%Y-%m-%dT%H:%M:%S")[:6])
+    return iso8601.parse_date(iso)
+
+
+def get_utc_now(iso=False):
+    """
+    Returns datetime.utcnow with UTC timezone info
+    """
+    now = datetime.utcnow().replace(tzinfo=iso8601.iso8601.UTC)
+    if iso:
+        return datetime_tuple_to_iso(now)
+    else:
+        return now
 
 
 def datetime_tuple_to_iso(tup):
     """
-    Converts a datetime tuple to iso time string
+    Converts a datetime tuple to a UTC iso time string
     """
-    iso = datetime.strftime(tup, "%Y-%m-%dT%H:%M:%S")
+    iso = datetime.strftime(tup.astimezone(iso8601.iso8601.UTC),
+                            "%Y-%m-%dT%H:%M:%S.%fZ")
     return iso
 
 
@@ -586,14 +593,18 @@ class struct_passwd(tuple):
             raise AttributeError
 
 
-def dump_compress_encode(obj, use_json=False):
+def dump_compress_encode(obj, use_json=False, chunk_size=None):
     serializer = cPickle
     if use_json:
         serializer = json
-    return zlib.compress(serializer.dumps(obj)).encode('base64')
+    p = zlib.compress(serializer.dumps(obj)).encode('base64')
+    if chunk_size is not None:
+        return [p[i:i + chunk_size] for i in range(0, len(p), chunk_size)]
+    return p
 
 
 def decode_uncompress_load(string, use_json=False):
+    string = ''.join(string)
     serializer = cPickle
     if use_json:
         serializer = json

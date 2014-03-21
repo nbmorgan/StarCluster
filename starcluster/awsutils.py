@@ -101,7 +101,7 @@ class EasyEC2(EasyAWS):
                  aws_ec2_path='/', aws_s3_host=None, aws_s3_path='/',
                  aws_port=None, aws_region_name=None, aws_is_secure=True,
                  aws_region_host=None, aws_proxy=None, aws_proxy_port=None,
-                 aws_proxy_user=None, aws_proxy_pass=None, vpc_id=None,
+                 aws_proxy_user=None, aws_proxy_pass=None,
                  aws_validate_certs=True, **kwargs):
         aws_region = None
         if aws_region_name and aws_region_host:
@@ -113,7 +113,7 @@ class EasyEC2(EasyAWS):
                     proxy_pass=aws_proxy_pass,
                     validate_certs=aws_validate_certs)
         super(EasyEC2, self).__init__(aws_access_key_id, aws_secret_access_key,
-                                      boto.connect_ec2, **kwds)
+                                      boto.connect_vpc, **kwds)
         self._conn = kwargs.get('connection')
         kwds = dict(aws_s3_host=aws_s3_host, aws_s3_path=aws_s3_path,
                     aws_port=aws_port, aws_is_secure=aws_is_secure,
@@ -219,6 +219,38 @@ class EasyEC2(EasyAWS):
             if img.id == image_id:
                 return img
 
+    def _wait_for_group_deletion_propagation(self, group):
+        if isinstance(group, boto.ec2.placementgroup.PlacementGroup):
+            while self.get_placement_group_or_none(group.name):
+                time.sleep(5)
+        else:
+            assert isinstance(group, boto.ec2.securitygroup.SecurityGroup)
+            while self.get_group_or_none(group.name):
+                time.sleep(5)
+
+    def get_subnet(self, subnet_id):
+        try:
+            return self.get_subnets(filters={'subnet_id': subnet_id})[0]
+        except IndexError:
+            raise exception.SubnetDoesNotExist(subnet_id)
+
+    def get_subnets(self, filters=None):
+        return self.conn.get_all_subnets(filters=filters)
+
+    def get_internet_gateways(self, filters=None):
+        return self.conn.get_all_internet_gateways(filters=filters)
+
+    def get_route_tables(self, filters=None):
+        return self.conn.get_all_route_tables(filters=filters)
+
+    def get_network_spec(self, *args, **kwargs):
+        return boto.ec2.networkinterface.NetworkInterfaceSpecification(
+            *args, **kwargs)
+
+    def get_network_collection(self, *args, **kwargs):
+        return boto.ec2.networkinterface.NetworkInterfaceCollection(
+            *args, **kwargs)
+
     def delete_group(self, group, max_retries=60, retry_delay=5):
         """
         This method deletes a security or placement group using group.delete()
@@ -233,7 +265,9 @@ class EasyEC2(EasyAWS):
         try:
             for i in range(max_retries):
                 try:
-                    return group.delete()
+                    ret_val = group.delete()
+                    self._wait_for_group_deletion_propagation(group)
+                    return ret_val
                 except boto.exception.EC2ResponseError as e:
                     if i == max_retries - 1:
                         raise
@@ -260,35 +294,24 @@ class EasyEC2(EasyAWS):
         """
         log.info("Creating security group %s..." % name)
         sg = self.conn.create_security_group(name, description, vpc_id=vpc_id)
-        while not self.get_group_or_none(name):
-            log.info("Waiting for security group %s..." % name)
-            time.sleep(3)
+        if not self.get_group_or_none(name):
+            s = utils.get_spinner("Waiting for security group %s..." % name)
+            try:
+                while not self.get_group_or_none(name):
+                    time.sleep(3)
+            finally:
+                s.stop()
         if auth_ssh:
             ssh_port = static.DEFAULT_SSH_PORT
-            self.conn.authorize_security_group(group_id=sg.id,
-                                               ip_protocol='tcp',
-                                               from_port=ssh_port,
-                                               to_port=ssh_port,
-                                               cidr_ip=static.WORLD_CIDRIP)
+            sg.authorize(ip_protocol='tcp', from_port=ssh_port,
+                         to_port=ssh_port, cidr_ip=static.WORLD_CIDRIP)
         if auth_group_traffic:
-            self.conn.authorize_security_group(
-                group_id=sg.id,
-                src_security_group_group_id=sg.id,
-                ip_protocol='icmp',
-                from_port=-1,
-                to_port=-1)
-            self.conn.authorize_security_group(
-                group_id=sg.id,
-                src_security_group_group_id=sg.id,
-                ip_protocol='tcp',
-                from_port=1,
-                to_port=65535)
-            self.conn.authorize_security_group(
-                group_id=sg.id,
-                src_security_group_group_id=sg.id,
-                ip_protocol='udp',
-                from_port=1,
-                to_port=65535)
+            sg.authorize(src_group=sg, ip_protocol='icmp', from_port=-1,
+                         to_port=-1)
+            sg.authorize(src_group=sg, ip_protocol='tcp', from_port=1,
+                         to_port=65535)
+            sg.authorize(src_group=sg, ip_protocol='udp', from_port=1,
+                         to_port=65535)
         return sg
 
     def get_all_security_groups(self, groupnames=[]):
@@ -444,7 +467,8 @@ class EasyEC2(EasyAWS):
                           availability_zone_group=None, placement=None,
                           user_data=None, placement_group=None,
                           block_device_map=None, subnet_id=None,
-                          iam_profile=None):
+                          iam_profile=None,
+                          network_interfaces=None):
         """
         Convenience method for running spot or flat-rate instances
         """
@@ -477,7 +501,6 @@ class EasyEC2(EasyAWS):
                 root.delete_on_termination = True
                 bdmap[img.root_device_name] = root
             block_device_map = bdmap
-
         shared_kwargs = dict(instance_type=instance_type,
                              key_name=key_name,
                              subnet_id=subnet_id,
@@ -485,8 +508,8 @@ class EasyEC2(EasyAWS):
                              placement_group=placement_group,
                              user_data=user_data,
                              iam_profile=iam_profile,
-                             block_device_map=block_device_map)
-
+                             block_device_map=block_device_map,
+                             network_interfaces=network_interfaces)
         if price:
             return self.request_spot_instances(
                 price, image_id,
@@ -507,8 +530,8 @@ class EasyEC2(EasyAWS):
                                security_group_ids=None, subnet_id=None,
                                placement=None, placement_group=None,
                                block_device_map=None,user_data=None,
-                               iam_profile=None):
-
+                               iam_profile=None,
+                                network_interfaces=None):
         kwargs = locals()
         kwargs['instance_profile_name'] = iam_profile
         kwargs.pop('self')
@@ -516,7 +539,7 @@ class EasyEC2(EasyAWS):
         return self.conn.request_spot_instances(**kwargs)
 
     def _wait_for_propagation(self, obj_ids, fetch_func, id_filter, obj_name,
-                              max_retries=5, interval=5):
+                              max_retries=60, interval=5):
         """
         Wait for a list of object ids to appear in the AWS API. Requires a
         function that fetches the objects and also takes a filters kwarg. The
@@ -531,7 +554,7 @@ class EasyEC2(EasyAWS):
         interval = max(1, interval)
         s = utils.get_spinner("Waiting for %s to propagate..." % obj_name)
         try:
-            for i in range(max_retries):
+            for i in range(max_retries + 1):
                 reqs = fetch_func(filters=filters)
                 reqs_ids = [req.id for req in reqs]
                 num_reqs = len(reqs)
@@ -539,18 +562,20 @@ class EasyEC2(EasyAWS):
                     log.debug("%d: only %d/%d %s have "
                               "propagated - sleeping..." %
                               (i, num_reqs, num_objs, obj_name))
-                    time.sleep(interval)
+                    if i != max_retries:
+                        time.sleep(interval)
                 else:
                     return
         finally:
             s.stop()
-        log.warn("Only %d/%d %s propagated..." %
-                 (num_reqs, num_objs, obj_name))
         missing = [oid for oid in obj_ids if oid not in reqs_ids]
-        log.warn("Missing %s: %s" % (obj_name, ', '.join(missing)))
+        raise exception.PropagationException(
+            "Failed to fetch %d/%d %s after %d seconds: %s" %
+            (num_reqs, num_objs, obj_name, max_retries * interval,
+             ', '.join(missing)))
 
     def wait_for_propagation(self, instances=None, spot_requests=None,
-                             max_retries=5, interval=5):
+                             max_retries=60, interval=5):
         """
         Wait for newly created instances and/or spot_requests to register in
         the AWS API by repeatedly calling get_all_{instances, spot_requests}.
@@ -574,8 +599,8 @@ class EasyEC2(EasyAWS):
                       max_count=1, key_name=None, security_groups=None,
                       placement=None, user_data=None, placement_group=None,
                       block_device_map=None, subnet_id=None,
-                      iam_profile = None):
-
+                      iam_profile = None,
+                      network_interfaces=None):
         kwargs = dict(
             instance_type=instance_type,
             min_count=min_count,
@@ -586,7 +611,8 @@ class EasyEC2(EasyAWS):
             user_data=user_data,
             block_device_map=block_device_map,
             instance_profile_name=iam_profile,
-            placement_group=placement_group
+            placement_group=placement_group,
+            network_interfaces=network_interfaces
         )
         if subnet_id:
             kwargs.update(
@@ -605,14 +631,12 @@ class EasyEC2(EasyAWS):
 
     def register_image(self, name, description=None, image_location=None,
                        architecture=None, kernel_id=None, ramdisk_id=None,
-                       root_device_name=None, block_device_map=None):
-        return self.conn.register_image(name=name, description=description,
-                                        image_location=image_location,
-                                        architecture=architecture,
-                                        kernel_id=kernel_id,
-                                        ramdisk_id=ramdisk_id,
-                                        root_device_name=root_device_name,
-                                        block_device_map=block_device_map)
+                       root_device_name=None, block_device_map=None,
+                       virtualization_type=None, sriov_net_support=None,
+                       snapshot_id=None):
+        kwargs = locals()
+        kwargs.pop('self')
+        return self.conn.register_image(**kwargs)
 
     def delete_keypair(self, name):
         return self.conn.delete_key_pair(name)
@@ -1165,6 +1189,66 @@ class EasyEC2(EasyAWS):
             log.info("Manifest migrated successfully. You can now run:\n" +
                      register_cmd + "\nto register your migrated image.")
 
+    def copy_image(self, source_region, source_image_id, name=None,
+                   description=None, client_token=None, wait_for_copy=False):
+        kwargs = locals()
+        kwargs.pop('self')
+        kwargs.pop('wait_for_copy')
+        log.info("Copying %s from %s to %s" % (source_image_id, source_region,
+                                               self.region.name))
+        resp = self.conn.copy_image(**kwargs)
+        log.info("New AMI in region %s: %s" %
+                 (self.region.name, resp.image_id))
+        if wait_for_copy:
+            img = self.get_image(resp.image_id)
+            self.wait_for_ami(img)
+        return resp
+
+    def wait_for_ami(self, ami):
+        if ami.root_device_type == 'ebs':
+            root = ami.block_device_mapping.get(ami.root_device_name)
+            if root.snapshot_id:
+                self.wait_for_snapshot(self.get_snapshot(root.snapshot_id))
+            else:
+                log.warn("The root device snapshot id is not yet available")
+        s = utils.get_spinner("Waiting for '%s' to become available" % ami.id)
+        try:
+            while ami.state != 'available':
+                ami.update()
+                time.sleep(10)
+        finally:
+            s.stop()
+
+    def copy_image_to_all_regions(self, source_region, source_image_id,
+                                  name=None, description=None,
+                                  client_token=None, add_region_to_desc=False,
+                                  wait_for_copies=False):
+        current_region = self.region
+        self.connect_to_region(source_region)
+        src_img = self.get_image(source_image_id)
+        regions = self.regions.copy()
+        regions.pop(source_region)
+        log.info("Copying %s to regions:\n%s" %
+                 (src_img.id, ', '.join(regions.keys())))
+        name = name or src_img.name
+        resps = {}
+        for r in regions:
+            self.connect_to_region(r)
+            desc = description or ''
+            if add_region_to_desc:
+                desc += ' (%s)' % r.upper()
+            resp = self.copy_image(src_img.region.name, src_img.id, name=name,
+                                   description=desc,
+                                   client_token=client_token)
+            resps[r] = resp
+        if wait_for_copies:
+            for r in resps:
+                self.connect_to_region(r)
+                img = self.get_image(resps[r].image_id)
+                self.wait_for_ami(img)
+        self.connect_to_region(current_region.name)
+        return resps
+
     def create_block_device_map(self, root_snapshot_id=None,
                                 root_device_name='/dev/sda1',
                                 add_ephemeral_drives=False,
@@ -1465,7 +1549,7 @@ class EasyEC2(EasyAWS):
             ypanrange = [minimum - yaxisrange / 2., maximum + yaxisrange / 2.]
             yzoomrange = [0.1, ypanrange[-1] - ypanrange[0]]
             context = dict(instance_type=instance_type,
-                           start=start, end=end,
+                           start=hist[-1].timestamp, end=hist[0].timestamp,
                            time_series_data=str(data).replace('L', ''),
                            shutdown=plot_shutdown_server,
                            xpanrange=xpanrange, ypanrange=ypanrange,
