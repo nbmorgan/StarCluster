@@ -256,7 +256,8 @@ class CmdStart(ClusterCompleter):
                 template_name=self.opts.cluster_template, zone=scluster.zone)
         except:
             log.exception(("Error attempting to store cluster settings.  This"
-                " cluster will not be cloneable."))
+                " cluster will not be cloneable. Following exception message"
+                " is informational, startup will continue "))
         if validate_only:
             return
         if not create_only and not self.opts.login_master:
