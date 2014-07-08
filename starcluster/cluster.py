@@ -312,7 +312,7 @@ class ClusterManager(managers.Manager):
             except exception.MasterDoesNotExist as e:
                 sep = '*' * 60
                 sub_msg =  "Cluster tag: %s" % tag
-                log.error('\n'.join([sep, e.msg,sub_msg sep]),
+                log.error('\n'.join([sep, e.msg,sub_msg, sep]),
                           extra=dict(__textwrap__=True))
                 print
                 continue
