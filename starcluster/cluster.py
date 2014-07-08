@@ -309,6 +309,13 @@ class ClusterManager(managers.Manager):
                           extra=dict(__textwrap__=True))
                 print
                 continue
+            except exception.MasterDoesNotExist as e:
+                sep = '*' * 60
+                sub_msg =  "Cluster tag: %s" % tag
+                log.error('\n'.join([sep, e.msg,sub_msg sep]),
+                          extra=dict(__textwrap__=True))
+                print
+                continue
             header = '%s (security group: %s)' % (tag, scg.name)
             print '-' * len(header)
             print header
