@@ -1539,14 +1539,20 @@ class Cluster(object):
         """
         interval = self.refresh_interval
         log.info("%s %s" % (msg, "(updating every %ds)" % interval))
-        time.sleep( interval )
-        try:
-            self.wait_for_active_spots()
-            self.wait_for_running_instances()
-            self.wait_for_ssh()
-        except Exception:
-            self.progress_bar.finish()
-            raise
+        tries = 0
+        while tries < 3:
+            tries += 1
+            time.sleep( interval + tries*interval )
+            try:
+                self.wait_for_active_spots()
+                self.wait_for_running_instances()
+                self.wait_for_ssh()
+                tries = 9999
+            except Exception:
+                log.warn("Error on startup, trying recovery")
+                if tries >= 3:
+                    self.progress_bar.finish()
+                    raise
 
     def is_cluster_stopped(self):
         """
