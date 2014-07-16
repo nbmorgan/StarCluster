@@ -150,6 +150,11 @@ INSTANCE_TYPES = {
     'i2.2xlarge': ['x86_64'],
     'i2.4xlarge': ['x86_64'],
     'i2.8xlarge': ['x86_64'],
+     'r3.large': ['x86_64'],
+     'r3.xlarge': ['x86_64'],
+     'r3.2xlarge': ['x86_64'],
+     'r3.4xlarge': ['x86_64'],
+     'r3.8xlarge': ['x86_64'],
 }
 
 MICRO_INSTANCE_TYPES = ['t1.micro']
@@ -160,7 +165,8 @@ CLUSTER_COMPUTE_TYPES = ['cc1.4xlarge', 'cc2.8xlarge']
 
 CLUSTER_GPU_TYPES = ['g2.2xlarge', 'cg1.4xlarge']
 
-CLUSTER_HIMEM_TYPES = ['cr1.8xlarge']
+HIMEM_TYPES = ['r3.large', 'r3.xlarge', 'r3.2xlarge', 'r3.4xlarge',
+                'r3.8xlarge']
 
 HI_IO_TYPES = ['hi1.4xlarge']
 
@@ -172,7 +178,7 @@ M3_COMPUTE_TYPES = ['c3.large', 'c3.xlarge', 'c3.2xlarge', 'c3.4xlarge',
 I2_STORAGE_TYPES = ['i2.xlarge', 'i2.2xlarge', 'i2.4xlarge', 'i2.8xlarge']
 
 HVM_ONLY_TYPES = (CLUSTER_COMPUTE_TYPES + CLUSTER_GPU_TYPES +
-                  CLUSTER_HIMEM_TYPES + I2_STORAGE_TYPES)
+                  CLUSTER_HIMEM_TYPES + I2_STORAGE_TYPES + HIMEM_TYPES)
 
 HVM_TYPES = (HVM_ONLY_TYPES + HI_IO_TYPES + HI_STORAGE_TYPES + SEC_GEN_TYPES +
              M3_COMPUTE_TYPES)
