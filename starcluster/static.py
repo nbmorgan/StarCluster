@@ -165,6 +165,8 @@ CLUSTER_COMPUTE_TYPES = ['cc1.4xlarge', 'cc2.8xlarge']
 
 CLUSTER_GPU_TYPES = ['g2.2xlarge', 'cg1.4xlarge']
 
+CLUSTER_HIMEM_TYPES = ['cr1.8xlarge']
+
 HIMEM_TYPES = ['r3.large', 'r3.xlarge', 'r3.2xlarge', 'r3.4xlarge',
                 'r3.8xlarge']
 
