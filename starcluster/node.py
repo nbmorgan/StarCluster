@@ -22,6 +22,7 @@ import base64
 import socket
 import posixpath
 import subprocess
+import math
 
 from starcluster import utils
 from starcluster import static
@@ -31,6 +32,8 @@ from starcluster import managers
 from starcluster import userdata
 from starcluster import exception
 from starcluster.logger import log
+from boto.dynamodb2.table import Table
+
 
 
 class NodeManager(managers.Manager):
@@ -93,6 +96,7 @@ class Node(object):
         self._num_procs = None
         self._memory = None
         self._user_data = None
+        self._spot_data_table = None
 
     def __repr__(self):
         return '<Node: %s (%s)>' % (self.alias, self.id)
@@ -187,6 +191,14 @@ class Node(object):
         payload = volstxt.split('\n', 2)[2]
         return utils.decode_uncompress_load(payload)
 
+    def get_iam_profile(self):
+        if self.instance.instance_profile:
+            arn = self.instance.instance_profile['arn']
+            match = re.match(r'arn:aws:iam::\d{12}:instance-profile/(\S+)', arn)
+            return match.group(1)
+        else:
+            return None
+
     def _remove_all_tags(self):
         tags = self.tags.keys()[:]
         for t in tags:
@@ -236,6 +248,10 @@ class Node(object):
                 self.ssh.execute(
                     "free -m | grep -i mem | awk '{print $2}'")[0])
         return self._memory
+
+    @property
+    def instance_profile(self):
+        return self.instance.instance_profile
 
     @property
     def ip_address(self):
@@ -879,6 +895,38 @@ class Node(object):
                 attached_vols.pop(root_dev)
         return attached_vols
 
+    @property
+    def cost(self):
+        """
+        Returns the current hourly and cumulative cost of this node
+        """
+        if self.is_spot():
+            current = utils.current_spot(self.placement, self.instance_type)
+            compute_time = math.ceil(
+                        utils.get_elapsed_seconds(self.launch_time)/3600.0)
+            mysum = 0.0
+            if self.spot_data_table:
+                t = Table(self.spot_data_table)
+                for r in t.query(instanceid__eq=self.id):
+                    mysum += float(r['charge'])
+                    compute_time -= 1
+                return (current, mysum + compute_time*current)
+            else:
+                compute_time = math.ceil(
+                        utils.get_elapsed_seconds(self.launch_time)/3600.0)
+                return (current, current*compute_time)
+        elif self.is_up():
+            price = utils.on_demand_price(self.region.name, self.instance_type)
+            compute_time = math.ceil(
+                        utils.get_elapsed_seconds(self.launch_time)/3600.0)
+            return (price, compute_time*price)
+        else:
+            return (0,0)
+
+    @property
+    def spot_data_table(self):
+        return static.AWS_SPOT_TABLE
+
     def detach_external_volumes(self):
         """
         Detaches all volumes returned by self.attached_vols
@@ -1181,6 +1229,7 @@ class Node(object):
             return "apt"
         elif self.ssh.isfile('/usr/bin/yum'):
             return "yum"
+
 
     def package_install(self, pkgs):
         """

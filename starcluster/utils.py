@@ -33,7 +33,8 @@ import cPickle
 import StringIO
 import calendar
 import urlparse
-from datetime import datetime
+from datetime import datetime,timedelta
+import boto.ec2
 
 import iptools
 import iso8601
@@ -279,6 +280,11 @@ def get_elapsed_time(past_time):
         timestr = "%d days, %s" % (delta.days, timestr)
     return timestr
 
+def get_elapsed_seconds( past_time ):
+    ptime = iso_to_localtime_tuple(past_time)
+    now = datetime.now()
+    delta = now - ptime
+    return delta.total_seconds()
 
 def iso_to_unix_time(iso):
     dtup = iso_to_datetime_tuple(iso)
@@ -649,3 +655,36 @@ def get_spinner(msg):
     log.info(msg, extra=dict(__nonewline__=True))
     s.start()
     return s
+
+def current_spot( zone, instance_type ):
+    st = (datetime.utcnow()-timedelta(hours=1)).strftime('%Y-%m-%dT%H:%M:%S.000%Z')
+    conn = boto.ec2.connect_to_region(zone[:-1])
+    return conn.get_spot_price_history(start_time=st, availability_zone=zone, 
+        instance_type=instance_type, max_results=1)[0].price
+
+def on_demand_price( region, instance_type ):
+    """
+    Returns the on-demand price for a given instance type in given region
+    """
+    dumb_to_normal = {
+    'us-east':'us-east-1',
+    'us-west-2':'us-west-2',
+    'us-west':'us-west-1',
+    'eu-ireland': 'eu-west-1',
+    'apac-sin':'ap-southeast-1',
+    'apac-tokyo':'ap-northeast-1',
+    'apac-syd':'ap-southeast-2',
+    'sa-east-1':'sa-east-1'}
+    import urllib2
+    od_url = 'http://aws.amazon.com/ec2/pricing'
+    od_url += '/pricing-on-demand-instances.json'
+    req = urllib2.urlopen( od_url  )
+    odp = json.loads(req.read())
+    for r in odp['config']['regions']:
+        if dumb_to_normal[r['region']] == region:
+            for it in  r['instanceTypes']:
+                for s in it['sizes']:
+                    if s['size'] == instance_type:
+                        for v in s['valueColumns']:
+                            if v['name'] == 'linux':
+                                return float(v['prices']['USD'])

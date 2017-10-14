@@ -307,7 +307,6 @@ class StarClusterCLI(object):
             log.error("Unhandled exception occured", exc_info=True)
             self.bug_found()
 
-
 def warn_debug_file_moved():
     old_file = os.path.join(static.TMP_DIR, 'starcluster-debug-%s.log' %
                             static.CURRENT_USER)
@@ -322,7 +321,6 @@ def warn_debug_file_moved():
         log.warn("")
         log.warn(old_file)
         log.warn(stars)
-
 
 def main():
     try:

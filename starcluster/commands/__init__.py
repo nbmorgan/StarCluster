@@ -52,6 +52,7 @@ from createkey import CmdCreateKey
 from removekey import CmdRemoveKey
 from put import CmdPut
 from get import CmdGet
+from clone import CmdClone
 from help import CmdHelp
 
 all_cmds = [
@@ -93,4 +94,5 @@ all_cmds = [
     CmdRunPlugin(),
     CmdShell(),
     CmdHelp(),
+    CmdClone()
 ]
