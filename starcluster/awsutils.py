@@ -46,7 +46,7 @@ from starcluster.logger import log
 
 class EasyAWS(object):
     def __init__(self, aws_access_key_id, aws_secret_access_key,
-                 connection_authenticator, security_token=None, **kwargs):
+                 connection_authenticator, **kwargs):
         """
         Create an EasyAWS object.
 
@@ -61,7 +61,6 @@ class EasyAWS(object):
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.connection_authenticator = connection_authenticator
-        self.security_token = security_token
         self._conn = None
         self._kwargs = kwargs
 
@@ -103,8 +102,7 @@ class EasyEC2(EasyAWS):
                  aws_port=None, aws_region_name=None, aws_is_secure=True,
                  aws_region_host=None, aws_proxy=None, aws_proxy_port=None,
                  aws_proxy_user=None, aws_proxy_pass=None,
-                 aws_validate_certs=True, security_token=None,
-                 **kwargs):
+                 aws_validate_certs=True, security_token=None, **kwargs):
         aws_region = None
         if aws_region_name and aws_region_host:
             aws_region = boto.ec2.regioninfo.RegionInfo(
