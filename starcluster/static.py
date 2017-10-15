@@ -174,7 +174,7 @@ INSTANCE_TYPES = {
     'd2.xlarge': ['x86_64'],
     'd2.2xlarge': ['x86_64'],
     'd2.4xlarge': ['x86_64'],
-    'd2.8xlarge': ['x86_64']
+    'd2.8xlarge': ['x86_64'],
     'r3.large': ['x86_64'],
     'r3.xlarge': ['x86_64'],
     'r3.2xlarge': ['x86_64'],
