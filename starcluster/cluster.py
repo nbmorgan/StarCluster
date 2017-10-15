@@ -22,6 +22,7 @@ import string
 import pprint
 import warnings
 import datetime
+import locale
 
 import iptools
 
@@ -51,7 +52,8 @@ class ClusterManager(managers.Manager):
         return "<ClusterManager: %s>" % self.ec2.region.name
 
     def get_cluster(self, cluster_name, group=None, load_receipt=True,
-                    load_plugins=True, load_volumes=True, require_keys=True):
+                    load_plugins=True, load_volumes=True, 
+                    load_iam_profile=True, require_keys=True):
         """
         Returns a Cluster object representing an active cluster
         """
@@ -64,7 +66,8 @@ class ClusterManager(managers.Manager):
                          cluster_group=group)
             if load_receipt:
                 cl.load_receipt(load_plugins=load_plugins,
-                                load_volumes=load_volumes)
+                       load_volumes=load_volumes,
+                       load_iam_profile=load_iam_profile)
             try:
                 cl.keyname = cl.keyname or cl.master_node.key_name
                 key_location = self.cfg.get_key(cl.keyname).get('key_location')
@@ -79,14 +82,15 @@ class ClusterManager(managers.Manager):
         except exception.SecurityGroupDoesNotExist:
             raise exception.ClusterDoesNotExist(cluster_name)
 
-    def get_clusters(self, load_receipt=True, load_plugins=True):
+    def get_clusters(self, load_receipt=True, load_plugins=True, load_iam_profile=True):
         """
         Returns a list of all active clusters
         """
         cluster_groups = self.get_cluster_security_groups()
         clusters = [self.get_cluster(g.name, group=g,
                                      load_receipt=load_receipt,
-                                     load_plugins=load_plugins)
+                                     load_plugins=load_plugins,
+                                     load_iam_profile=load_iam_profile)
                     for g in cluster_groups]
         return clusters
 
@@ -169,24 +173,30 @@ class ClusterManager(managers.Manager):
 
     def add_node(self, cluster_name, alias=None, no_create=False,
                  image_id=None, instance_type=None, zone=None,
-                 placement_group=None, spot_bid=None):
+                 placement_group=None, spot_bid=None, 
+                 iam_profile=None):
         cl = self.get_cluster(cluster_name)
         return cl.add_node(alias=alias, image_id=image_id,
                            instance_type=instance_type, zone=zone,
                            placement_group=placement_group, spot_bid=spot_bid,
-                           no_create=no_create)
+                           no_create=no_create, 
+                           iam_profile=iam_profile)
 
     def add_nodes(self, cluster_name, num_nodes, aliases=None, no_create=False,
                   image_id=None, instance_type=None, zone=None,
-                  placement_group=None, spot_bid=None):
+                  placement_group=None, spot_bid=None, 
+                  iam_profile=None):
         """
         Add one or more nodes to cluster
         """
+        print __file__,191
+        print iam_profile
         cl = self.get_cluster(cluster_name)
         return cl.add_nodes(num_nodes, aliases=aliases, image_id=image_id,
                             instance_type=instance_type, zone=zone,
                             placement_group=placement_group, spot_bid=spot_bid,
-                            no_create=no_create)
+                            no_create=no_create,
+                            iam_profile=iam_profile)
 
     def remove_node(self, cluster_name, alias=None, terminate=True,
                     force=False):
@@ -272,7 +282,8 @@ class ClusterManager(managers.Manager):
             raise ValueError("Invalid cluster group name: %s" % sg)
         return tag
 
-    def list_clusters(self, cluster_groups=None, show_ssh_status=False):
+    def list_clusters(self, cluster_groups=None, show_ssh_status=False,
+            show_cost=False, show_tags=False):
         """
         Prints a summary for each active cluster on EC2
         """
@@ -290,10 +301,18 @@ class ClusterManager(managers.Manager):
             tag = self.get_tag_from_sg(scg.name)
             try:
                 cl = self.get_cluster(tag, group=scg, load_plugins=False,
-                                      load_volumes=False, require_keys=False)
+                                      load_volumes=False, require_keys=False, 
+                                      load_iam_profile=True)
             except exception.IncompatibleCluster as e:
                 sep = '*' * 60
                 log.error('\n'.join([sep, e.msg, sep]),
+                          extra=dict(__textwrap__=True))
+                print
+                continue
+            except exception.MasterDoesNotExist as e:
+                sep = '*' * 60
+                sub_msg =  "Cluster tag: %s" % tag
+                log.error('\n'.join([sep, e.msg,sub_msg, sep]),
                           extra=dict(__textwrap__=True))
                 print
                 continue
@@ -319,8 +338,12 @@ class ClusterManager(managers.Manager):
                 print 'Subnet: %s' % getattr(n, 'subnet_id', 'N/A')
             print 'Zone: %s' % getattr(n, 'placement', 'N/A')
             print 'Keypair: %s' % getattr(n, 'key_name', 'N/A')
+            ipn = cl.iam_profile if cl.iam_profile else 'N/A'
+            print 'IAM instance profile: %s' % ipn
             ebs_vols = []
+            tags = []
             for node in nodes:
+                tags.append(node.tags)
                 devices = node.attached_vols
                 if not devices:
                     continue
@@ -337,6 +360,32 @@ class ClusterManager(managers.Manager):
                           (vid, nid, dev, status))
             else:
                 print 'EBS volumes: N/A'
+            if tags and show_tags:
+                print 'Tags:'
+                tag_join = {}
+                for node_tags in tags:
+                    for k, v in node_tags.iteritems():
+                        if k not in tag_join:
+                            tag_join[k] = [v]
+                        else:
+                            tag_join[k].append(v)
+                for k, v in tag_join.iteritems():
+                    tag_list = sorted(v)
+                    prev = ''
+                    count = 1
+                    tag_display = [tag_list[0]]
+                    count_display = []
+                    for t in tag_list[1:]:
+                        if t == tag_display[-1]:
+                            count += 1
+                        else:
+                            tag_display.append(t)
+                            count_display.append(count)
+                            count = 1
+                    count_display.append(count)
+                    print '    ',
+                    print "%s: %s" %( k, ','.join(["%s(%i)"%(t,c) for t,c in 
+                            zip(tag_display, count_display)]))
             spot_reqs = cl.spot_requests
             if spot_reqs:
                 active = len([s for s in spot_reqs if s.state == 'active'])
@@ -350,8 +399,35 @@ class ClusterManager(managers.Manager):
                     msg += '%d open' % opn
                 print 'Spot requests: %s' % msg
             if nodes:
+                #init settings for cost display
+                locale.setlocale(locale.LC_ALL, '' )
+                hourly_sum, total_sum, prev_i_type, prev_spot, same_count = (
+                0.0, 0.0, '', None, 1)
+                hourly, total = (0.0,0.0)
+                cost_templ = ' '*11 + '%s/hr-inst   %s total/inst (x %i %s) '
                 print 'Cluster nodes:'
                 for node in nodes:
+                    #cost print more complicated than needs to be
+                    #due to type aggregation
+                    if show_cost:
+                        if (node.instance_type == prev_i_type and 
+                            node.is_spot() == prev_spot):
+                                hourly, total = hourly, total
+                                same_count += 1
+                        else:
+                            prev_i_type = node.instance_type
+                            prev_spot = node.is_spot()
+                            if hourly + total > 0:
+                                cost_line =  ( cost_templ % 
+                                        (locale.currency(hourly),
+                                        locale.currency(total), 
+                                        same_count,
+                                        node.instance_type
+                                        ) )
+                                print cost_line
+                            same_count = 1
+                            hourly, total = node.cost
+
                     nodeline = "    %7s %s %s %s" % (node.alias, node.state,
                                                      node.id, node.addr or '')
                     if node.spot_id:
@@ -360,7 +436,21 @@ class ClusterManager(managers.Manager):
                         ssh_status = {True: 'Up', False: 'Down'}
                         nodeline += ' (SSH: %s)' % ssh_status[node.is_up()]
                     print nodeline
+                    if show_cost:
+                        hourly_sum += hourly
+                        total_sum += total
+                if show_cost:        
+                    cost_line = (cost_templ % 
+                            (locale.currency(hourly),
+                            locale.currency(total), same_count,
+                            node.instance_type
+                            ) )
+                    print cost_line
                 print 'Total nodes: %d' % len(nodes)
+                if show_cost:
+                    print ('Total cost: %s/hr   %s total' % 
+                                (locale.currency(hourly_sum),
+                                    locale.currency(total_sum)))
             else:
                 print 'Cluster nodes: N/A'
             print
@@ -381,7 +471,6 @@ class ClusterManager(managers.Manager):
 
 
 class Cluster(object):
-
     def __init__(self,
                  ec2_conn=None,
                  spot_bid=None,
@@ -411,6 +500,7 @@ class Cluster(object):
                  force_spot_master=False,
                  disable_cloudinit=False,
                  subnet_id=None,
+                 iam_profile=None,
                  public_ips=None,
                  **kwargs):
         # update class vars with given vars
@@ -429,9 +519,11 @@ class Cluster(object):
         self.cluster_size = cluster_size or 0
         self.volumes = self.load_volumes(volumes)
         self.plugins = self.load_plugins(plugins)
+        
         self.userdata_scripts = userdata_scripts or []
         self.dns_prefix = dns_prefix and cluster_tag
-
+      
+    
         self._cluster_group = None
         self._placement_group = None
         self._subnet = None
@@ -571,12 +663,14 @@ class Cluster(object):
         cfg = self.__getstate__()
         return pprint.pformat(cfg)
 
-    def load_receipt(self, load_plugins=True, load_volumes=True):
+    def load_receipt(self, load_plugins=True, load_volumes=True, load_iam_profile=True):
         """
         Load the original settings used to launch this cluster into this
         Cluster object. Settings are loaded from cluster group tags and the
         master node's user data.
         """
+        if not (load_plugins or load_volumes or load_iam_profile):
+            return True
         try:
             tags = self.cluster_group.tags
             version = tags.get(static.VERSION_TAG, '')
@@ -603,6 +697,8 @@ class Cluster(object):
                 self.plugins = self.load_plugins(master.get_plugins())
             if load_volumes:
                 self.volumes = master.get_volumes()
+            if load_iam_profile:
+                self.iam_profile = master.get_iam_profile()
         except exception.PluginError:
             log.error("An error occurred while loading plugins: ",
                       exc_info=True)
@@ -887,11 +983,12 @@ class Cluster(object):
         return spots
 
     def create_node(self, alias, image_id=None, instance_type=None, zone=None,
-                    placement_group=None, spot_bid=None, force_flat=False):
+                    placement_group=None, spot_bid=None, force_flat=False, iam_profile=None):
         return self.create_nodes([alias], image_id=image_id,
                                  instance_type=instance_type, zone=zone,
                                  placement_group=placement_group,
-                                 spot_bid=spot_bid, force_flat=force_flat)[0]
+                                 spot_bid=spot_bid, force_flat=force_flat,
+                                 iam_profile=iam_profile)[0]
 
     def _get_cluster_userdata(self, aliases):
         alias_file = utils.string_to_file('\n'.join(['#ignored'] + aliases),
@@ -913,7 +1010,7 @@ class Cluster(object):
 
     def create_nodes(self, aliases, image_id=None, instance_type=None,
                      zone=None, placement_group=None, spot_bid=None,
-                     force_flat=False):
+                     force_flat=False, iam_profile=None):
         """
         Convenience method for requesting instances with this cluster's
         settings. All settings (kwargs) except force_flat default to cluster
@@ -938,6 +1035,7 @@ class Cluster(object):
         image_id = image_id or self.node_image_id
         count = len(aliases) if not spot_bid else 1
         user_data = self._get_cluster_userdata(aliases)
+        iam_profile = iam_profile or self.iam_profile
         kwargs = dict(price=spot_bid, instance_type=instance_type,
                       min_count=count, max_count=count, count=count,
                       key_name=self.keyname,
@@ -945,7 +1043,10 @@ class Cluster(object):
                       launch_group=cluster_sg,
                       placement=zone or getattr(self.zone, 'name', None),
                       user_data=user_data,
-                      placement_group=placement_group)
+                      placement_group=placement_group,
+                      subnet_id=self.subnet_id,
+                      iam_profile=iam_profile
+                      )
         if self.subnet_id:
             netif = self.ec2.get_network_spec(
                 device_index=0, associate_public_ip_address=self.public_ips,
@@ -985,7 +1086,7 @@ class Cluster(object):
 
     def add_node(self, alias=None, no_create=False, image_id=None,
                  instance_type=None, zone=None, placement_group=None,
-                 spot_bid=None):
+                 spot_bid=None, iam_profile=None):
         """
         Add a single node to this cluster
         """
@@ -993,11 +1094,12 @@ class Cluster(object):
         return self.add_nodes(1, aliases=aliases, image_id=image_id,
                               instance_type=instance_type, zone=zone,
                               placement_group=placement_group,
-                              spot_bid=spot_bid, no_create=no_create)
+                              spot_bid=spot_bid, no_create=no_create, 
+                              iam_profile=iam_profile)
 
     def add_nodes(self, num_nodes, aliases=None, image_id=None,
                   instance_type=None, zone=None, placement_group=None,
-                  spot_bid=None, no_create=False):
+                  spot_bid=None, no_create=False, iam_profile=None):
         """
         Add new nodes to this cluster
 
@@ -1030,7 +1132,8 @@ class Cluster(object):
             resp = self.create_nodes(aliases, image_id=image_id,
                                      instance_type=instance_type, zone=zone,
                                      placement_group=placement_group,
-                                     spot_bid=spot_bid)
+                                     spot_bid=spot_bid, 
+                                     iam_profile=iam_profile)
             if spot_bid or self.spot_bid:
                 self.ec2.wait_for_propagation(spot_requests=resp)
             else:
@@ -1440,13 +1543,20 @@ class Cluster(object):
         """
         interval = self.refresh_interval
         log.info("%s %s" % (msg, "(updating every %ds)" % interval))
-        try:
-            self.wait_for_active_spots()
-            self.wait_for_running_instances()
-            self.wait_for_ssh()
-        except Exception:
-            self.progress_bar.finish()
-            raise
+        tries = 0
+        while tries < 3:
+            tries += 1
+            time.sleep( interval + tries*interval )
+            try:
+                self.wait_for_active_spots()
+                self.wait_for_running_instances()
+                self.wait_for_ssh()
+                tries = 9999
+            except Exception:
+                log.warn("Error on startup, trying recovery")
+                if tries >= 3:
+                    self.progress_bar.finish()
+                    raise
 
     def is_cluster_stopped(self):
         """

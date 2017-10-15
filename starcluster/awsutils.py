@@ -467,6 +467,7 @@ class EasyEC2(EasyAWS):
                           availability_zone_group=None, placement=None,
                           user_data=None, placement_group=None,
                           block_device_map=None, subnet_id=None,
+                          iam_profile=None,
                           network_interfaces=None):
         """
         Convenience method for running spot or flat-rate instances
@@ -510,6 +511,7 @@ class EasyEC2(EasyAWS):
                              placement=placement,
                              placement_group=placement_group,
                              user_data=user_data,
+                             iam_profile=iam_profile,
                              block_device_map=block_device_map,
                              network_interfaces=network_interfaces)
         if price:
@@ -531,10 +533,13 @@ class EasyEC2(EasyAWS):
                                availability_zone_group=None,
                                security_group_ids=None, subnet_id=None,
                                placement=None, placement_group=None,
-                               user_data=None, block_device_map=None,
-                               network_interfaces=None):
+                               block_device_map=None,user_data=None,
+                               iam_profile=None,
+                                network_interfaces=None):
         kwargs = locals()
+        kwargs['instance_profile_name'] = iam_profile
         kwargs.pop('self')
+        kwargs.pop('iam_profile')
         return self.conn.request_spot_instances(**kwargs)
 
     def _wait_for_propagation(self, obj_ids, fetch_func, id_filter, obj_name,
@@ -605,6 +610,7 @@ class EasyEC2(EasyAWS):
                       max_count=1, key_name=None, security_groups=None,
                       placement=None, user_data=None, placement_group=None,
                       block_device_map=None, subnet_id=None,
+                      iam_profile = None,
                       network_interfaces=None):
         kwargs = dict(
             instance_type=instance_type,
@@ -614,8 +620,9 @@ class EasyEC2(EasyAWS):
             subnet_id=subnet_id,
             placement=placement,
             user_data=user_data,
-            placement_group=placement_group,
             block_device_map=block_device_map,
+            instance_profile_name=iam_profile,
+            placement_group=placement_group,
             network_interfaces=network_interfaces
         )
         if subnet_id:

@@ -19,6 +19,8 @@ import os
 import urllib
 import StringIO
 import ConfigParser
+import sys, json
+import requests # pip install requests
 
 from starcluster import utils
 from starcluster import static
@@ -573,6 +575,7 @@ class StarClusterConfig(object):
             self.aws = self._load_section('aws info', self.aws_settings)
         except exception.ConfigSectionMissing:
             log.warn("No [aws info] section found in the config!")
+        self.aws.update(self.get_settings_from_ec2(self.aws_settings))
         self.aws.update(self.get_settings_from_env(self.aws_settings))
         self.keys = self._load_sections('key', self.key_settings)
         self.vols = self._load_sections('volume', self.volume_settings)
@@ -598,6 +601,32 @@ class StarClusterConfig(object):
             elif key in os.environ:
                 log.warn("Setting '%s' from environment..." % key)
                 found[key] = os.environ.get(key)
+        return found
+
+    def get_settings_from_ec2(self, settings):
+        """
+        Returns AWS credentials defined by the ec2 instance role
+        """
+        found = {}
+        hypervisor_uuid = ""
+
+        hypervisor_uuid_fn = "/sys/hypervisor/uuid"
+        if os.path.isfile(hypervisor_uuid_fn):
+            # file exists
+            with open(hypervisor_uuid_fn, 'r') as hypervisor_uuid_file:
+                hypervisor_uuid = hypervisor_uuid_file.read()
+
+        if hypervisor_uuid.startswith("ec2"):
+            # Get the Role information and credentials
+            security_credentials = requests.get('http://169.254.169.254/latest/meta-data/iam/security-credentials');
+            role = security_credentials.text
+            security_credentials_role = requests.get('http://169.254.169.254/latest/meta-data/iam/security-credentials/' + role);
+            decoded_data = json.loads(security_credentials_role.text)
+            found['aws_access_key_id'] = decoded_data['AccessKeyId']
+            found['aws_secret_access_key'] = decoded_data['SecretAccessKey']
+            #token = decoded_data['Token']
+            log.info("Setting credentials from EC2 instance data ...")
+
         return found
 
     def get_cluster_template(self, template_name, tag_name=None,

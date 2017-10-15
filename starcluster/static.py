@@ -101,12 +101,23 @@ UD_PLUGINS_FNAME = "_sc_plugins.txt"
 UD_VOLUMES_FNAME = "_sc_volumes.txt"
 UD_ALIASES_FNAME = "_sc_aliases.txt"
 
+#table that stores the actual charges for spot instances
+AWS_SPOT_TABLE = "spot_history"
+
 INSTANCE_METADATA_URI = "http://169.254.169.254/latest"
 INSTANCE_STATES = ['pending', 'running', 'shutting-down',
                    'terminated', 'stopping', 'stopped']
 VOLUME_STATUS = ['creating', 'available', 'in-use',
                  'deleting', 'deleted', 'error']
 VOLUME_ATTACH_STATUS = ['attaching', 'attached', 'detaching', 'detached']
+
+KEYNAMES = {
+    'us-east-1':'starcluster',
+    'us-west-1':'starcluster-us-west-1',
+    'us-west-2':'starcluster-us-west-2',
+    'eu-west-1':'starcluster-eu-west-1',
+}
+            
 
 INSTANCE_TYPES = {
     't1.micro': ['i386', 'x86_64'],
@@ -164,6 +175,11 @@ INSTANCE_TYPES = {
     'd2.2xlarge': ['x86_64'],
     'd2.4xlarge': ['x86_64'],
     'd2.8xlarge': ['x86_64']
+    'r3.large': ['x86_64'],
+    'r3.xlarge': ['x86_64'],
+    'r3.2xlarge': ['x86_64'],
+    'r3.4xlarge': ['x86_64'],
+    'r3.8xlarge': ['x86_64'],
 }
 
 T1_INSTANCE_TYPES = ['t1.micro']
@@ -264,6 +280,8 @@ AWS_SETTINGS = {
     'aws_proxy_user': (str, False, None, None, None),
     'aws_proxy_pass': (str, False, None, None, None),
     'aws_validate_certs': (bool, False, True, None, None),
+    'aws_config_table' : (str, False, None, None, None),
+    'aws_meta_bucket' : (str, False, None, None, None),
 }
 
 KEY_SETTINGS = {
@@ -317,4 +335,5 @@ CLUSTER_SETTINGS = {
     'force_spot_master': (bool, False, False, None, None),
     'disable_cloudinit': (bool, False, False, None, None),
     'dns_prefix': (bool, False, False, None, None),
+    'iam_profile': (str, False, None, None, None),
 }
