@@ -624,9 +624,8 @@ class StarClusterConfig(object):
             decoded_data = json.loads(security_credentials_role.text)
             found['aws_access_key_id'] = decoded_data['AccessKeyId']
             found['aws_secret_access_key'] = decoded_data['SecretAccessKey']
-            #token = decoded_data['Token']
+            found['security_token'] = decoded_data['Token']
             log.info("Setting credentials from EC2 instance data ...")
-
         return found
 
     def get_cluster_template(self, template_name, tag_name=None,

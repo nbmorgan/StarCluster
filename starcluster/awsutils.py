@@ -46,7 +46,7 @@ from starcluster.logger import log
 
 class EasyAWS(object):
     def __init__(self, aws_access_key_id, aws_secret_access_key,
-                 connection_authenticator, **kwargs):
+                 connection_authenticator, security_token=None, **kwargs):
         """
         Create an EasyAWS object.
 
@@ -61,6 +61,7 @@ class EasyAWS(object):
         self.aws_access_key_id = aws_access_key_id
         self.aws_secret_access_key = aws_secret_access_key
         self.connection_authenticator = connection_authenticator
+        self.security_token = security_token
         self._conn = None
         self._kwargs = kwargs
 
@@ -102,7 +103,8 @@ class EasyEC2(EasyAWS):
                  aws_port=None, aws_region_name=None, aws_is_secure=True,
                  aws_region_host=None, aws_proxy=None, aws_proxy_port=None,
                  aws_proxy_user=None, aws_proxy_pass=None,
-                 aws_validate_certs=True, **kwargs):
+                 aws_validate_certs=True, security_token=None,
+                 **kwargs):
         aws_region = None
         if aws_region_name and aws_region_host:
             aws_region = boto.ec2.regioninfo.RegionInfo(
@@ -111,7 +113,8 @@ class EasyEC2(EasyAWS):
                     path=aws_ec2_path, proxy=aws_proxy,
                     proxy_port=aws_proxy_port, proxy_user=aws_proxy_user,
                     proxy_pass=aws_proxy_pass,
-                    validate_certs=aws_validate_certs)
+                    validate_certs=aws_validate_certs,
+                    security_token=security_token)
         super(EasyEC2, self).__init__(aws_access_key_id, aws_secret_access_key,
                                       boto.connect_vpc, **kwds)
         self._conn = kwargs.get('connection')
@@ -1605,12 +1608,12 @@ class EasyS3(EasyAWS):
                  aws_s3_path='/', aws_port=None, aws_is_secure=True,
                  aws_s3_host=DefaultHost, aws_proxy=None, aws_proxy_port=None,
                  aws_proxy_user=None, aws_proxy_pass=None,
-                 aws_validate_certs=True, **kwargs):
+                 aws_validate_certs=True, security_token=None, **kwargs):
         kwargs = dict(is_secure=aws_is_secure, host=aws_s3_host or
                       self.DefaultHost, port=aws_port, path=aws_s3_path,
                       proxy=aws_proxy, proxy_port=aws_proxy_port,
                       proxy_user=aws_proxy_user, proxy_pass=aws_proxy_pass,
-                      validate_certs=aws_validate_certs)
+                      validate_certs=aws_validate_certs, security_token=security_token)
         if aws_s3_host:
             kwargs.update(dict(calling_format=self._calling_format))
         super(EasyS3, self).__init__(aws_access_key_id, aws_secret_access_key,
