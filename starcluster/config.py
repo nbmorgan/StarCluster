@@ -618,9 +618,9 @@ class StarClusterConfig(object):
 
         if hypervisor_uuid.startswith("ec2"):
             # Get the Role information and credentials
-            security_credentials = requests.get('http://instance-data.ec2.internal/latest/meta-data/iam/security-credentials');
+            security_credentials = requests.get('http://169.254.169.254/latest/meta-data/iam/security-credentials');
             role = security_credentials.text
-            security_credentials_role = requests.get('http://instance-data.ec2.internal/latest/meta-data/iam/security-credentials/' + role);
+            security_credentials_role = requests.get('http://169.254.169.254/latest/meta-data/iam/security-credentials/' + role);
             decoded_data = json.loads(security_credentials_role.text)
             found['aws_access_key_id'] = decoded_data['AccessKeyId']
             found['aws_secret_access_key'] = decoded_data['SecretAccessKey']
