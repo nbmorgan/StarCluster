@@ -626,14 +626,16 @@ class EasyEC2(EasyAWS):
             placement_group=placement_group,
             network_interfaces=network_interfaces
         )
+
         if subnet_id:
+            del kwargs['network_interfaces']
             kwargs.update(
                 security_group_ids=self.get_securityids_from_names(
                     security_groups))
-            return self.conn.run_instances(image_id, **kwargs)
         else:
             kwargs.update(security_groups=security_groups)
-            return self.conn.run_instances(image_id, **kwargs)
+
+        return self.conn.run_instances(image_id, **kwargs)
 
     def create_image(self, instance_id, name, description=None,
                      no_reboot=False):

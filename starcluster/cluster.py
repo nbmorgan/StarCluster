@@ -1047,14 +1047,15 @@ class Cluster(object):
                       subnet_id=self.subnet_id,
                       iam_profile=iam_profile
                       )
-        if self.subnet_id:
-            netif = self.ec2.get_network_spec(
-                device_index=0, associate_public_ip_address=self.public_ips,
-                subnet_id=self.subnet_id, groups=[self.cluster_group.id])
-            kwargs.update(
-                network_interfaces=self.ec2.get_network_collection(netif))
-        else:
-            kwargs.update(security_groups=[cluster_sg])
+        # Not Needed or helpful in my VPC
+        # if self.subnet_id:
+        #    netif = self.ec2.get_network_spec(
+        #        device_index=0, associate_public_ip_address=self.public_ips,
+        #        subnet_id=self.subnet_id, groups=[self.cluster_group.id])
+        #    kwargs.update(
+        #        network_interfaces=self.ec2.get_network_collection(netif))
+        #else:
+        kwargs.update(security_groups=[cluster_sg])
         resvs = []
         if spot_bid:
             security_group_id = self.cluster_group.id

@@ -208,11 +208,11 @@ class StarClusterConfig(object):
             val = [v.strip() for v in val.split(',')]
         return val
 
-    def __load_config(self):
+    def __load_config(self, cfg_file=None):
         """
         Populates self._config with a new ConfigParser instance
         """
-        cfg = self._get_cfg_fp()
+        cfg = self._get_cfg_fp(cfg_file)
         try:
             cp = InlineCommentsIgnoredConfigParser()
             cp.readfp(cfg)
@@ -473,7 +473,7 @@ class StarClusterConfig(object):
             itypes.append(itype_dic)
 
     def _load_section(self, section_name, section_settings,
-                      filter_settings=True):
+                      filter_settings=True, skip_check=False):
         """
         Returns a dictionary containing all section_settings for a given
         section_name by first loading the settings in the config, loading
@@ -484,7 +484,8 @@ class StarClusterConfig(object):
         self._load_settings(section_name, section_settings, store,
                             filter_settings)
         self._load_defaults(section_settings, store)
-        self._check_required(section_name, section_settings, store)
+        if not skip_check:
+            self._check_required(section_name, section_settings, store)
         return store
 
     def _get_section_name(self, section):
@@ -567,16 +568,21 @@ class StarClusterConfig(object):
         Populate this config object from the StarCluster config
         """
         log.debug('Loading config')
+        aws_section_name='aws info'
         try:
             self.globals = self._load_section('global', self.global_settings)
         except exception.ConfigSectionMissing:
             pass
         try:
-            self.aws = self._load_section('aws info', self.aws_settings)
+             self.aws = self._load_section(aws_section_name, self.aws_settings, skip_check=True)
         except exception.ConfigSectionMissing:
             log.warn("No [aws info] section found in the config!")
-        self.aws.update(self.get_settings_from_ec2(self.aws_settings))
+
+        self.aws.update(self.get_settings_from_profile(self.aws_settings, self.aws))
+        self.aws.update(self.get_settings_from_ec2(self.aws_settings, self.aws))
         self.aws.update(self.get_settings_from_env(self.aws_settings))
+        self._check_required(aws_section_name, self.aws_settings, self.aws)
+
         self.keys = self._load_sections('key', self.key_settings)
         self.vols = self._load_sections('volume', self.volume_settings)
         self.vols.update(self._load_sections('vol', self.volume_settings))
@@ -603,11 +609,14 @@ class StarClusterConfig(object):
                 found[key] = os.environ.get(key)
         return found
 
-    def get_settings_from_ec2(self, settings):
+    def get_settings_from_ec2(self, settings, store):
         """
         Returns AWS credentials defined by the ec2 instance role
         """
         found = {}
+        if store['aws_use_ec2_role'] is None or store['aws_use_ec2_role'] == False:
+            return found
+
         hypervisor_uuid = ""
 
         hypervisor_uuid_fn = "/sys/hypervisor/uuid"
@@ -626,6 +635,39 @@ class StarClusterConfig(object):
             found['aws_secret_access_key'] = decoded_data['SecretAccessKey']
             found['security_token'] = decoded_data['Token']
             log.info("Setting credentials from EC2 instance data ...")
+        return found
+
+    def  get_settings_from_profile(self, settings, store, creds_file=None):
+        found = {}
+        profile_name = store['aws_profile_name']
+        if profile_name is None :
+            return found
+
+        creds_file = creds_file \
+               or os.environ.get('AWS_SHARED_CREDENTIALS_FILE') \
+               or static.AWS_CREDS_FILE
+
+        creds_fp = self._get_cfg_fp(creds_file)
+        try:
+            creds = InlineCommentsIgnoredConfigParser()
+            creds.readfp(creds_fp)
+            try:
+                found = dict(creds._sections.get(profile_name))
+                del found['__name__']
+                if 'aws_session_token' in found:
+                    found['security_token'] = found.pop( 'aws_session_token')
+
+                if not found:
+                    raise exception.ConfigSectionMissing(
+                        'Missing profile %s in %s' % profile_name, creds_file)
+
+            except exception.ConfigSectionMissing:
+                pass
+        except ConfigParser.MissingSectionHeaderError:
+            raise exception.ConfigHasNoSections(cfg.name)
+        except ConfigParser.ParsingError, e:
+            raise exception.ConfigError(e)
+
         return found
 
     def get_cluster_template(self, template_name, tag_name=None,
@@ -770,6 +812,7 @@ class InlineCommentsIgnoredConfigParser(ConfigParser.ConfigParser):
 if __name__ == "__main__":
     from pprint import pprint
     cfg = StarClusterConfig().load()
+    print "========="
     pprint(cfg.aws)
     pprint(cfg.clusters)
     pprint(cfg.keys)

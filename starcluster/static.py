@@ -75,6 +75,10 @@ STARCLUSTER_RECEIPT_DIR = "/var/run/starcluster"
 STARCLUSTER_RECEIPT_FILE = os.path.join(STARCLUSTER_RECEIPT_DIR, "receipt.pkl")
 STARCLUSTER_OWNER_ID = 342652561657
 
+AWS_CFG_DIR = os.path.join(os.path.expanduser('~'), '.aws')
+AWS_CFG_FILE = os.path.join(AWS_CFG_DIR, 'config')
+AWS_CREDS_FILE = os.path.join(AWS_CFG_DIR, 'credentials')
+
 DEBUG_FILE = os.path.join(STARCLUSTER_LOG_DIR, 'debug.log')
 SSH_DEBUG_FILE = os.path.join(STARCLUSTER_LOG_DIR, 'ssh-debug.log')
 AWS_DEBUG_FILE = os.path.join(STARCLUSTER_LOG_DIR, 'aws-debug.log')
@@ -263,9 +267,12 @@ GLOBAL_SETTINGS = {
 }
 
 AWS_SETTINGS = {
+     # setting, type, required?, default, options, callback
     'aws_access_key_id': (str, True, None, None, None),
     'aws_secret_access_key': (str, True, None, None, None),
     'aws_user_id': (str, False, None, None, None),
+    'aws_profile_name': (str, False, None, None, None),
+    'aws_use_ec2_role': (bool, False, False, None, None),
     'ec2_cert': (str, False, None, None, __expand_all),
     'ec2_private_key': (str, False, None, None, __expand_all),
     'aws_port': (int, False, None, None, None),
@@ -282,6 +289,13 @@ AWS_SETTINGS = {
     'aws_validate_certs': (bool, False, True, None, None),
     'aws_config_table' : (str, False, None, None, None),
     'aws_meta_bucket' : (str, False, None, None, None),
+}
+
+AWS_CREDS_SETTINGS = {
+     # setting, type, required?, default, options, callback
+    'aws_access_key_id': (str, True, None, None, None),
+    'aws_secret_access_key': (str, True, None, None, None),
+    'aws_session_token': (str, False, None, None, None),
 }
 
 KEY_SETTINGS = {
